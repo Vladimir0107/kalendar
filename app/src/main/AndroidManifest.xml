@@ -26,6 +26,10 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name=".SalaryActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".AlarmReceiver"
             android:exported="false" />
