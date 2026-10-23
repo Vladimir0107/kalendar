@@ -2,11 +2,16 @@ package ru.planner.zadachi;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.TimePickerDialog;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.Gravity;
+import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -16,6 +21,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
@@ -64,6 +70,16 @@ public class DayActivity extends Activity {
         workBox.setOnCheckedChangeListener((b, checked) -> Store.setWorkOverride(this, date, checked));
         root.addView(workBox);
 
+        buildWorkSection(root);
+
+        TextView tasksHead = new TextView(this);
+        tasksHead.setText("Дела");
+        tasksHead.setTextSize(18);
+        tasksHead.setTypeface(Typeface.DEFAULT_BOLD);
+        tasksHead.setTextColor(Color.BLACK);
+        tasksHead.setPadding(0, dp(20), 0, 0);
+        root.addView(tasksHead);
+
         counter = new TextView(this);
         counter.setTextSize(16);
         counter.setTextColor(0xFF333333);
@@ -101,6 +117,135 @@ public class DayActivity extends Activity {
 
         setContentView(sv);
         renderList();
+    }
+
+    // ---------- work hours & pay ----------
+
+    private Store.Work work;
+    private Button inBtn, outBtn;
+    private EditText hoursEt, piecesEt;
+    private TextView payTv;
+    private boolean muting;
+
+    /** TextWatcher with a single callback. */
+    private abstract static class Watcher implements TextWatcher {
+        abstract void changed(String s);
+        public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+        public void onTextChanged(CharSequence s, int a, int b, int c) { }
+        public void afterTextChanged(Editable e) { changed(e.toString()); }
+    }
+
+    private void buildWorkSection(LinearLayout root) {
+        work = Store.getWork(this, date);
+        boolean piece = Store.isPiecePay(this);
+
+        TextView head = new TextView(this);
+        head.setText("Работа и зарплата");
+        head.setTextSize(18);
+        head.setTypeface(Typeface.DEFAULT_BOLD);
+        head.setTextColor(Color.BLACK);
+        head.setPadding(0, dp(16), 0, dp(4));
+        root.addView(head);
+
+        LinearLayout times = new LinearLayout(this);
+        inBtn = new Button(this);
+        inBtn.setAllCaps(false);
+        inBtn.setOnClickListener(v -> pickTime(true));
+        outBtn = new Button(this);
+        outBtn.setAllCaps(false);
+        outBtn.setOnClickListener(v -> pickTime(false));
+        times.addView(inBtn, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        times.addView(outBtn, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        root.addView(times);
+
+        hoursEt = numberField(root, "Отработано часов (можно ввести вручную)");
+        hoursEt.addTextChangedListener(new Watcher() {
+            void changed(String s) {
+                if (muting) return;
+                work.hours = Store.parseNum(s);
+                saveWork();
+            }
+        });
+
+        piecesEt = numberField(root, "Сделано штук (сдельная оплата)");
+        piecesEt.addTextChangedListener(new Watcher() {
+            void changed(String s) {
+                if (muting) return;
+                work.pieces = Store.parseNum(s);
+                saveWork();
+            }
+        });
+        if (!piece) {
+            piecesEt.setVisibility(View.GONE);
+            ((View) piecesEt.getTag()).setVisibility(View.GONE);
+        }
+
+        payTv = new TextView(this);
+        payTv.setTextSize(17);
+        payTv.setTypeface(Typeface.DEFAULT_BOLD);
+        payTv.setTextColor(0xFF2E7D32);
+        payTv.setPadding(0, dp(8), 0, 0);
+        root.addView(payTv);
+
+        Button clear = new Button(this);
+        clear.setText("Очистить часы");
+        clear.setAllCaps(false);
+        clear.setOnClickListener(v -> {
+            work = new Store.Work();
+            saveWork();
+            refreshWorkUi();
+        });
+        root.addView(clear);
+
+        refreshWorkUi();
+    }
+
+    private EditText numberField(LinearLayout root, String label) {
+        TextView l = new TextView(this);
+        l.setText(label);
+        l.setTextColor(0xFF555555);
+        l.setPadding(0, dp(8), 0, 0);
+        root.addView(l);
+        EditText e = new EditText(this);
+        e.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        e.setSingleLine(true);
+        e.setTag(l);
+        root.addView(e);
+        return e;
+    }
+
+    private void pickTime(boolean isIn) {
+        String cur = isIn ? work.in : work.out;
+        int h = isIn ? 8 : 20, m = 0;
+        if (cur != null) {
+            LocalTime t = LocalTime.parse(cur);
+            h = t.getHour();
+            m = t.getMinute();
+        }
+        new TimePickerDialog(this, (view, hh, mm) -> {
+            String s = String.format(Locale.US, "%02d:%02d", hh, mm);
+            if (isIn) work.in = s; else work.out = s;
+            if (work.in != null && work.out != null) {
+                work.hours = Store.hoursBetween(work.in, work.out, (int) Store.getD(this, Store.BREAK_MIN));
+            }
+            saveWork();
+            refreshWorkUi();
+        }, h, m, true).show();
+    }
+
+    private void saveWork() {
+        Store.saveWork(this, date, work);
+        payTv.setText("Заработок за день: " + Store.money(Store.dayPay(this, work)));
+    }
+
+    private void refreshWorkUi() {
+        muting = true;
+        inBtn.setText("Пришёл: " + (work.in == null ? "—" : work.in));
+        outBtn.setText("Ушёл: " + (work.out == null ? "—" : work.out));
+        hoursEt.setText(work.hours > 0 ? Store.num(work.hours) : "");
+        piecesEt.setText(work.pieces > 0 ? Store.num(work.pieces) : "");
+        muting = false;
+        payTv.setText("Заработок за день: " + Store.money(Store.dayPay(this, work)));
     }
 
     private void addTask() {

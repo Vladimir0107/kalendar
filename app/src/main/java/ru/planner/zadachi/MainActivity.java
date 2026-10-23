@@ -108,6 +108,10 @@ public class MainActivity extends Activity {
         header.addView(next, new LinearLayout.LayoutParams(dp(56), dp(56)));
         root.addView(header);
 
+        Button salary = button("💰 Зарплата", v -> startActivity(new Intent(this, SalaryActivity.class)));
+        salary.setTextSize(17);
+        root.addView(salary);
+
         // Weekday labels
         LinearLayout wd = new LinearLayout(this);
         for (int i = 0; i < 7; i++) {
@@ -211,7 +215,14 @@ public class MainActivity extends Activity {
         SpannableStringBuilder sb = new SpannableStringBuilder(String.valueOf(d.getDayOfMonth()));
         sb.setSpan(new StyleSpan(Typeface.BOLD), 0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         sb.setSpan(new RelativeSizeSpan(1.25f), 0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        if (work) {
+        Store.Work w = Store.getWork(this, d);
+        if (w.hours > 0) {
+            int s = sb.length();
+            sb.append("\n").append(Store.num(w.hours)).append("ч");
+            sb.setSpan(new ForegroundColorSpan(C_SHIFT), s, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.setSpan(new StyleSpan(Typeface.BOLD), s, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.setSpan(new RelativeSizeSpan(0.75f), s, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        } else if (work) {
             int s = sb.length();
             sb.append("\nсмена");
             sb.setSpan(new ForegroundColorSpan(C_SHIFT), s, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
